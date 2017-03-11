@@ -22,10 +22,6 @@ Sub Process_Globals
 	
 	Dim HostIP As String
 	
-	'AllOne Lounge
-	'Dim ip As String = "192.168.178.52"	
-	'Dim Mac As String = "ACCF2329914E"
-	
 	Dim ip As String = "192.168.178.2"	
 	Dim Mac As String = "ACCF00000000"
 	
