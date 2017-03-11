@@ -1,0 +1,389 @@
+﻿Version=4.7
+AppType=JavaFX
+NumberOfModules=0
+Build1=Default,nz.ope.orvibo.learn
+NumberOfFiles=1
+File1=Layout1.bjl
+NumberOfLibraries=5
+Library1=jcore
+Library2=jfx
+Library3=jutilities
+Library4=jnetwork
+Library5=byteconverter
+@EndOfDesignText@
+#Region  Project Attributes 
+	#MainFormWidth: 605
+	#MainFormHeight: 470
+#End Region
+
+Sub Process_Globals
+	Private fx As JFX
+	Private MainForm As Form
+	
+	Dim HostIP As String
+	
+	'AllOne Lounge
+	'Dim ip As String = "192.168.178.52"	
+	'Dim Mac As String = "ACCF2329914E"
+	
+	Dim ip As String = "192.168.178.2"	
+	Dim Mac As String = "ACCF00000000"
+	
+	Dim magicWord As String = "6864"
+	Dim twenties As String = "202020202020"
+	
+	Dim LocalPassword As String = ""	
+	
+	Dim UDPSocket1 As UDPSocket	
+	Dim b As ByteConverter	
+	
+	Private btnSubscribe As Button
+	Private btnFindUsingMAC As Button
+
+	Private txtIP As TextField
+	Private txtMAC As TextField
+	
+	Private txtIR As TextArea
+	Private txtLog As TextArea
+	Private btnLearnMode As Button
+	Private btnCopy As Button
+	Private btnSendIR As Button
+End Sub
+
+Sub AppStart (Form1 As Form, Args() As String)
+	Dim u As jUtilities
+	
+	HostIP = u.HostAddress	
+	
+	UDPSocket1.Initialize("UDP", 10000, 1000)
+		
+	MainForm = Form1
+	MainForm.Resizable = False	
+	MainForm.SetFormStyle("UNIFIED")
+	MainForm.RootPane.LoadLayout("Layout1") 'Load the layout file.
+	
+	txtIP.Text = ip
+	txtMAC.Text = Mac	
+	txtIR.Text = ""
+	txtLog.Text = "Host IP = " & HostIP
+	
+	MainForm.Show
+End Sub
+
+Sub PopulateValues()
+	ip = txtIP.Text
+	Mac = txtMAC.Text
+	
+	LocalPassword = ReverseHex(Mac)
+End Sub
+
+Sub tLog(Text As String)
+	txtLog.Text = txtLog.Text & CRLF & Text
+	txtLog.SetSelection(txtLog.Text.Length, txtLog.Text.Length)
+End Sub
+
+Sub ReverseHex(Hex As String) As String
+	Dim HexRev As String
+	
+	Dim i As Int	
+    For i = 0 To Hex.Length -1 Step 2
+        HexRev = Hex.CharAt(i) & Hex.CharAt(i+1) & HexRev
+    Next
+    Return HexRev
+End Sub
+
+Sub HexPacketLength(Pack As String) As String
+	Dim l As Int	
+	l = Pack.Length/2	
+	l = l + 4
+	
+	Dim lengthhex As String
+	lengthhex = Bit.ToHexString(l).ToUpperCase
+	
+	Do While lengthhex.Length < 4
+		lengthhex = "0" & lengthhex
+	Loop
+	
+	'Log("lengthhex " & lengthhex)
+	
+	Return lengthhex	
+End Sub
+
+Sub SendPacket(msg As String)
+	tLog(msg)
+	tLog("Packet=" & magicWord & HexPacketLength(msg) & msg)
+	
+	Dim Packet As UDPPacket
+    Packet.Initialize(b.HexToBytes(magicWord & HexPacketLength(msg) & msg), ip, 10000)
+		
+	UDPSocket1.Send(Packet)	
+End Sub
+
+Sub UDP_PacketArrived (Packet As UDPPacket)
+	If Packet.HostAddress <> HostIP Then
+		tLog("*********************************")
+		tLog("From: " & Packet.HostAddress)		
+		tLog("*********************************")
+		
+		Dim PacketLength As Int = Packet.Length
+		
+		tLog("Packet length = " & PacketLength)
+		
+		Dim b As ByteConverter
+		Dim MessageHex As String = b.HexFromBytes(Packet.Data)
+		
+		MessageHex = MessageHex.SubString2(0,PacketLength*2)
+		
+		tLog("MessageHex = " & MessageHex)
+		
+		Dim ResponseType As String = MessageHex.SubString2(8,12)
+		tLog(ResponseType & " " & BytesToString(Packet.Data, 4, 2, "UTF8"))
+		
+	    Dim msg As String		
+		msg = BytesToString(Packet.Data, Packet.Offset, Packet.Length, "UTF8")
+	    tLog("msg = " & msg)
+				
+		'Log("HexFromBytes " & b.HexFromBytes(Packet.Data))
+		
+		If MessageHex.IndexOf("ACCF") > 0 Then		
+			Dim macAddress As String = MessageHex.SubString2(MessageHex.IndexOf("ACCF"), MessageHex.IndexOf("ACCF")+12)	
+			tLog("From MAC: " & macAddress)
+			
+'			cd - 6364 - Countdown
+'			cl - 636C - Subscription response received (A.K.A TCP Login Command)
+'			cs - 6373 - Clock synchronization
+'			dc - 6463 - RF Socket state change response (known As RfCtrlCmd in APK)
+'			dc-rf - 64632D7266
+'			di - 6469 - Button on AllOne pressed
+'			dn - 646E
+'			hb - 6862 - "Heartbeet" (periodic ping. Perhaps keeps socket subscribed?)
+'			ic - 6963 - IR code emitted (IR Control Command)
+'			ic2 - 696332
+'			ir - 6972 - "Check IR command" (according To decompiled APK)
+'			ls - 6C73 - IR code received (send this To enter learning mode)
+'			ls-cd - 6C732D6364
+'			lt -      - TCP logout command (For remote access?)
+'			mp - 6D70 - Modify remote password
+'			qa - 7161 - Search For socket where Mac unknown
+'			qg - 7167 - Search For socket where Mac Is known
+'			rt - 7274 - Query response received (A.K.A Read Table command)
+'			rs -      - Reset command
+'			sf - 7366 - State change (via socket button press)
+'			tm - 746D - Table modify (change tables read by Read Table command)
+'			ts -      - Time set (sets the time on the device in question. Confirmed with Kepler, need To confirm with others)
+'			ul - 756C
+'			ur - 7572
+			
+			'Device Type
+			If ResponseType = "7161" Then				
+				Log(ResponseType & " [Device Type]")
+				
+				Dim components() As String
+				components = Regex.split(twenties,MessageHex)
+				
+				Log("Type: " & b.StringFromBytes(b.HexToBytes(components(2).SubString2(0,12)),"UTF8"))
+				
+				'Dim n As Int				
+				'For n = 0 To components.Length -1
+				'	Log(n & " - " & b.StringFromBytes(b.HexToBytes(components(n)),"UTF8"))
+				'	Log(components(n))
+				'Next				
+			End If
+			
+			'Subscribed
+			If ResponseType = "636C" Then				
+				Log(ResponseType & " [Subscribed]")
+				
+				Dim components() As String
+				components = Regex.split(twenties,MessageHex)
+				
+				If components(1).Length > 11 Then Log("State: " & components(1).SubString2(11,12))
+			End If
+			
+			'State Change
+			If ResponseType = "7366" Then				
+				Log(ResponseType & " [State Change]")
+				
+				Dim components() As String
+				components = Regex.split(twenties,MessageHex)
+				
+				Log("State: " & components(1).SubString2(9,10))
+			End If
+			
+			'Button Press
+			If ResponseType = "6469" Then
+				Log(ResponseType & " [Putton Press]")
+			End If		
+			
+			'Search For socket where Mac Is known
+			If ResponseType = "7167" Then
+				Log(ResponseType & " [Search where Mac Is known]")
+			End If		
+			
+			'Table
+			If ResponseType = "7274" Then
+				Log(ResponseType & " [Table]")
+				
+				Dim components() As String
+				components = Regex.split(twenties,MessageHex)
+				
+				Log("Components = " & components.Length)				
+				
+				'Log("Remote Password: " & b.StringFromBytes(b.HexToBytes(components(3)),"UTF8"))
+				
+				'Log("Name: " & b.StringFromBytes(b.HexToBytes(components(4)),"UTF8"))
+				
+				'01 00 00 00 00 
+				'01 00 01 00 00				
+				
+				'06 
+				'00 04 00 04 00 0A 
+				'00
+				
+				'02 00 00 00 00
+				'01 00 01 00 00 
+				'06 
+				'00 04 00 04 00 17
+				'00 
+				'06
+				'00 03 00 03 00 02
+				'00
+				
+				Dim n As Int				
+				For n = 0 To components.Length -1
+					Log(n & ") - " & b.StringFromBytes(b.HexToBytes(components(n)),"UTF8") & " [" & components(n) & "]")	
+				Next	
+				
+				Dim LastComponent As String
+				LastComponent = components(components.Length-1)
+				
+				Dim table_number As String
+				table_number = LastComponent.SubString2(0,2)		
+				
+				Log("table_number = " & table_number)
+				
+				'Dim table_info As String = components(5)
+				
+				'Dim startip As Int
+				'startip = table_info.IndexOf("1027")
+				'Log(startip)
+				
+				'Dim starthost As Int
+				'starthost = table_info.IndexOf2("1027",startip+4)
+				'Log(starthost)
+				
+				'Dim ip As String
+				'ip = table_info.SubString2(startip+4,startip+12)
+				'Log("ip = " & ip)
+								
+				'Dim host As String
+				'host = table_info.SubString(starthost+4)				
+				'Log("host = " & host)
+				
+				'Dim table_data As String
+				'table_data = LastComponent.SubString(28)		
+				
+				'Log("table_data = " & table_data)
+				
+				
+				
+				'For n = 0 To components.Length -1
+				'	Log(n & ") - " & b.HexFromBytes(components(n)))					
+				'Next
+			End If
+			
+			'IR Done
+			If ResponseType = "6963" Then				
+				Log(ResponseType & " [IR Done]")
+			End If
+			
+			'IR Code Received
+			If ResponseType = "6C73" Then				
+				Log(ResponseType & " [IR Code Received]")
+				
+				If MessageHex.Length >= 52 Then
+					txtIR.Text = MessageHex.SubString(52)
+				End If
+			End If
+			
+			'MessageHex = 686400F26C73ACCF2329914E202020202020010000000002D80000000000D8000000000000000000C800720E76079B010E02B601A6059E010E029E010F029D010E02B601F601B601F6019E010D029E010E02B701F601B501F701B501F701A50107029E01C105B201F601B601F7019D010F02B601F6019D010F02B601F701B501F701A2010B02B601F6019E01BF059C010F02B701F5019E010F021C029001B801F401AD01FF019D010E02B501F6019E0111029B010F02B501F701B601F6019E010E029D01BF05B401F7019E010F02B501F7019D010E02B601000294010F029D0128028401BF059C010F029E01BE059D010000
+		
+		End If
+		
+			
+	End If
+	
+	
+End Sub
+
+Sub btnSubscribe_MouseClicked (EventData As MouseEvent)
+	PopulateValues
+	
+	'Subscribe
+	'Local Password (ie Reversed MAC)
+	Dim msg As String
+	msg = "636C" & Mac & twenties & LocalPassword & twenties	
+	SendPacket(msg)
+End Sub
+
+Sub btnFindUsingMAC_MouseClicked (EventData As MouseEvent)
+	PopulateValues
+End Sub
+
+Sub btnLearnMode_MouseClicked (EventData As MouseEvent)
+	PopulateValues
+	
+	txtIR.Text = ""
+	'Enter Learn Mode
+	'Local Password (ie Reversed MAC)
+	Dim msg As String
+	msg = "6C73" & Mac & twenties & "010000000000"
+	SendPacket(msg)
+End Sub
+
+Sub btnCopy_MouseClicked (EventData As MouseEvent)
+	PopulateValues
+	
+	fx.Clipboard.SetString(txtIR.Text)
+End Sub
+
+Sub btnSendIR_MouseClicked (EventData As MouseEvent)
+	If txtIR.Text = "" Then Return
+	
+	PopulateValues
+	
+	Dim msg As String
+	msg = PrepareIR(txtIR.Text)
+	SendPacket(msg)
+End Sub
+
+Sub PrepareIR(RawIR As String) As String
+	Dim RandomBitA As String = Bit.ToHexString(Rnd(0,255)).ToUpperCase
+	Dim RandomBitB As String = Bit.ToHexString(Rnd(0,255)).ToUpperCase
+	
+	If RandomBitA.Length < 2 Then RandomBitA = "0" & RandomBitA
+	If RandomBitB.Length < 2 Then RandomBitB = "0" & RandomBitB
+	
+	Dim irlength As Int
+	irlength = RawIR.Length/2
+	
+	Dim irlengthhex As String
+	irlengthhex = Bit.ToHexString(irlength).ToUpperCase
+	
+	Do While irlengthhex.Length < 4
+		irlengthhex = "0" & irlengthhex
+	Loop
+	
+	irlengthhex = ReverseHex(irlengthhex)
+	
+	Dim msg As String
+	msg = "6963" & Mac & twenties & "65000000" & RandomBitA & RandomBitB & irlengthhex & RawIR
+	
+	Dim fullir As String
+	'fullir = magicWord & HexPacketLength(msg) & msg
+	fullir = msg
+	
+	tLog("fullir = " & fullir)
+	
+	Return fullir
+End Sub
